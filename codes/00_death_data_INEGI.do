@@ -64,7 +64,7 @@ foreach year in $years  {
 	g age_at_death = 0*(edad < 4000) + int(edad - 4000) * (edad > 4000)
 	replace age_at_death =. if age_at_death == 998
 	g mexican = (nacionalid == 1)
-	replace mexican = . if mexican == 9
+	replace mexican = . if nacionalid == 9
 	g female = (sexo == 2)
 	replace female = . if sexo == 9
 	drop if female == .
@@ -95,7 +95,7 @@ foreach year in $years  {
 * whether the deceased was enrolled in Seguro Popular.
 	g sp = (derechohab == 7)
 
-	keep cve_ent cve_mun female yod yob age_at_death mexican yod yob mob ///
+	keep cve_ent cve_mun female yod yob age_at_death mexican mob ///
 	ever_married married icd10 derechohab medic_cert date_ocurr lista_mex mod  
 	*sp hosp home_hosp med_assist
 
@@ -125,8 +125,8 @@ foreach year in $years  {
 
 }
 
-use "$data/deaths/temp/d98", clear
-
+*Append all years into a single dataset (avoid double-loading d98)
+clear
 foreach year in $years {
 	append using "$data/deaths/temp/d`year'"
 }
@@ -251,7 +251,7 @@ g age_gr = 0 * inrange(age_at_death, 0, 4) + ///
            5 * inrange(age_at_death, 5, 9) + ///
 		   10 * inrange(age_at_death, 10, 14) + ///
 		   15 * inrange(age_at_death, 15, 19) + ///
-		   20 * inrange(age_at_death, 20, 14) + ///
+		   20 * inrange(age_at_death, 20, 24) + ///
 		   25 * inrange(age_at_death, 25, 29) + ///
 		   30 * inrange(age_at_death, 30, 34) + ///
 		   35 * inrange(age_at_death, 35, 39) + ///
@@ -325,9 +325,9 @@ destring(cve_ent cve_mun), replace
 
 merge m:1 year muni using "$data/economic_census/econ_census_cz.dta"
 drop if year > 2015
-drop if _==2
+drop if _merge==2
 *economic census data available for three years sampled
-g aux = (_==1 & inlist(year, 2003, 2008, 2013))
+g aux = (_merge==1 & inlist(year, 2003, 2008, 2013))
 bys muni: egen muni_index = max(aux)
 drop if muni_index == 1
 drop _merge aux muni_index
@@ -354,7 +354,7 @@ g aamr_f = (deaths_female/pop_f) * pop_w_f
 g aamr_m = (deaths_male/pop_m) * pop_w_m
 
 *age-adjusted cause specific death rate
-global disaese = "cvd nutri infec neoplasm mental digest peri homicide others"
+global disease = "cvd nutri infec neoplasm mental digest peri homicide others"
 
 foreach dis in $disease {
 	g aamr_`dis' = (deaths_`dis'/pop) * pop_w
@@ -434,17 +434,17 @@ foreach sex in $sex {
 }
 
 
-*by disases
-global disaese = "cvd nutri infec neoplasm mental digest peri homicide others"
+*by disease
+global disease = "cvd nutri infec neoplasm mental digest peri homicide others"
 
-foreach var in $dis {
-	
+foreach dis in $disease {
+
 	g asdr_`dis'_0_14 = deaths_`dis'_0_14/pop_0_14
 	g asdr_`dis'_15_49 = deaths_`dis'_15_49/pop_15_49
 	g asdr_`dis'_15_64 = deaths_`dis'_15_64/pop_15_64
 	g asdr_`dis'_50_69 = deaths_`dis'_50_69/pop_50_69
 	g asdr_`dis'_70 = deaths_`dis'_70/pop_70
-	
+
 	}
 
 
@@ -504,14 +504,20 @@ foreach var in $ratios {
 save "$data/deaths/mortality_shock_data.dta", replace
 }
 
+/*
+*NOTE: The code below is from an older locality-level workflow and is not part of
+*the current municipality/CZ pipeline. It references variables (locality, covered,
+*pgbenef) and files (deaths_02_15_clean) that are not produced above.
+*Kept here for reference only.
+
 (mean) pop00 pop05 pop10 pob_tot iml medic_cert lag_reg ///
 		sp pg_int_pob analf sprim  vsaguae vsee vpisot poch2sm vsdye vhac gm_2005 iml2005
 
-			
+
 *adding population CONAPO
 merge m:1 locality yod using "$data/locality_im_interpolated_2000_2011"
 
-drop if _==2
+drop if _merge==2
 ren _merge _conapo
 *CONTEO / ITER DATA
 merge m:1 locality using "$data/population/iter_00_05_10.dta" , keepus(locality pop00 pop05 pop10)
@@ -533,21 +539,21 @@ g pg_int_pob = pgbenef/pob_tot
 replace pg_int_pob = 0 if pg_int_pob == .
 *206 localities with intensity above 1
 destring(cve_ent cve_mun cve_loc), replace
-compress		
+compress
 
 
-			
+
 
 merge m:1 locality using "$data/change_localities"
 ta yod _merge
-	drop if _==2 // This localities that change are not in my dataset
+	drop if _merge==2 // This localities that change are not in my dataset
 	distinct locality if _merge==3
-	drop if _==3 // this people died in localities that changed (1429)
+	drop if _merge==3 // this people died in localities that changed (1429)
 
 drop _merge
-			
+
 compress
-save "$data/deaths_00_15_clean", replace 
+save "$data/deaths_00_15_clean", replace
 ***
 
 
@@ -558,12 +564,12 @@ keep if inrange(yod, 2002, 2011)
 compress
 save "$data/deaths_02_15_panel", replace
 
-use "$data/deaths_02_15_panel", clear 
+use "$data/deaths_02_15_panel", clear
 
 keep if inrange(yod, 2002, 2015)
 
 ren cve_ent state
-	
+
 g cve_ent_mun = int(locality/10000)
 *There are localitites that I am not able to identify because they are confidential
 *in the death records. LOC = 7777
@@ -591,8 +597,7 @@ keep(3) nogen keepus(pop_exp)
 	lab var iml "margination index"
 	lab var gm_2005 "margination index level in 2005"
 	lab var pop_exp "Population by age, treatment, year (exp interpolated)"
-	
+
 compress
 save "$data/deaths_02_15_did_panel", replace
-
-
+*/
