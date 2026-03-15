@@ -54,7 +54,7 @@ g laamr_f = log(aamr_f * 100000)
 g laamr_m = log(aamr_m * 100000)
 
 *age-adjusted cause specific death rate
-global disaese = "cvd nutri infec neoplasm mental digest peri homicide others"
+global disease = "cvd nutri infec neoplasm mental digest peri homicide others"
 
 foreach dis in $disease {
 	g laamr_`dis' = log(aamr_`dis' * 100000)
@@ -98,10 +98,10 @@ foreach sex in $sex {
 	g lasdr_non_cvd_`sex'_70 = log(asdr_non_cvd_`sex'_70 * 100000)
 }
 	
-	*by disases
-global disaese = "cvd nutri infec neoplasm mental digest peri homicide others"
+	*by disease
+global disease = "cvd nutri infec neoplasm mental digest peri homicide others"
 
-foreach var in $dis {
+foreach dis in $disease {
 	g lasdr_`dis'_0_14 = log(asdr_`dis'_0_14 * 100000)
 	g lasdr_`dis'_15_49 = log(asdr_`dis'_15_49 * 100000)
 	g lasdr_`dis'_15_64 = log(asdr_`dis'_15_64 * 100000)
@@ -560,9 +560,361 @@ foreach shock in $depvar {
 foreach shock in $depvar {
 	reghdfe laamr c.`shock'##ib2008.year [pw=pop06], a(year cz) vce(cluster cz)
 }
-	
 
 
+/*====================================================================
+  EVENT STUDY — Figure 1
+  Preferred shock: shock_emp_w_pop_03_08 (wage-emp/pop, 2003-2008)
+  Baseline year: 2006 (one year before the recession onset)
+  Outcome: log AAMR (all causes)
+
+  Extracts year-by-year betas and 95% CIs into a tempfile,
+  then plots and exports. Repeat this block for other outcomes
+  (laamr_f, laamr_m, laamr_cvd, etc.) as supplementary figures.
+====================================================================*/
+
+{
+local shock shock_emp_w_pop_03_08
+set showomitted off
+
+reghdfe laamr c.`shock'##ib2006.year [pw=pop06], a(year cz) vce(cluster cz)
+
+*-- Store year-by-year coefficients and 95% CIs
+tempfile es_laamr
+postfile es_h year beta lb ub using `es_laamr', replace
+foreach yr of numlist 1998/2015 {
+	if `yr' == 2006 {
+		post es_h (2006) (0) (0) (0)
+	}
+	else {
+		post es_h (`yr') ///
+			(_b[c.`shock'#`yr'.year]) ///
+			(_b[c.`shock'#`yr'.year] - 1.96*_se[c.`shock'#`yr'.year]) ///
+			(_b[c.`shock'#`yr'.year] + 1.96*_se[c.`shock'#`yr'.year])
+	}
+}
+postclose es_h
+
+*-- Plot
+preserve
+use `es_laamr', clear
+twoway (rarea lb ub year, color(navy%20) lcolor(%0)) ///
+	   (connected beta year, mc(navy) lc(navy) ms(O) msize(small)), ///
+	yline(0, lcolor(black) lpattern(dash)) ///
+	xline(2006, lcolor("253 181 21")) ///
+	xline(2008, lpattern(dash) lcolor(maroon)) ///
+	xlabel(1998(2)2015, angle(45) labsize(small)) ///
+	xtitle("Year") ///
+	ytitle("Effect of Employment Shock on log(AAMR)" "(95% CI)", size(small)) ///
+	note("Baseline year: 2006. Vertical lines: 2006 (yellow) and 2008 recession onset (dashed red)." ///
+		 "Shock = change in wage-emp/pop ratio, 2003-2008. Weighted by 2006 CZ population.", size(vsmall)) ///
+	graphregion(color(white)) legend(off)
+graph export "$output/figures/es_laamr.pdf", replace
+restore
+}
 
 
+/*====================================================================
+  EVENT STUDY — By Sex (Supplementary)
+====================================================================*/
+
+{
+local shock shock_emp_w_pop_03_08
+set showomitted off
+
+foreach sex in female male {
+
+	reghdfe laamr_`sex' c.`shock'##ib2006.year [pw=pop06], a(year cz) vce(cluster cz)
+
+	tempfile es_`sex'
+	postfile es_h year beta lb ub using `es_`sex'', replace
+	foreach yr of numlist 1998/2015 {
+		if `yr' == 2006 {
+			post es_h (2006) (0) (0) (0)
+		}
+		else {
+			post es_h (`yr') ///
+				(_b[c.`shock'#`yr'.year]) ///
+				(_b[c.`shock'#`yr'.year] - 1.96*_se[c.`shock'#`yr'.year]) ///
+				(_b[c.`shock'#`yr'.year] + 1.96*_se[c.`shock'#`yr'.year])
+		}
+	}
+	postclose es_h
+
+	preserve
+	use `es_`sex'', clear
+	twoway (rarea lb ub year, color(navy%20) lcolor(%0)) ///
+		   (connected beta year, mc(navy) lc(navy) ms(O) msize(small)), ///
+		yline(0, lcolor(black) lpattern(dash)) ///
+		xline(2006, lcolor("253 181 21")) ///
+		xline(2008, lpattern(dash) lcolor(maroon)) ///
+		xlabel(1998(2)2015, angle(45) labsize(small)) ///
+		xtitle("Year") ytitle("Effect on log(AAMR) — `sex'" "(95% CI)", size(small)) ///
+		graphregion(color(white)) legend(off)
+	graph export "$output/figures/es_laamr_`sex'.pdf", replace
+	restore
+}
+}
+
+
+/*====================================================================
+  EVENT STUDY — By Cause (Supplementary)
+  Note: rare causes (peri, mental) may have many zero-death cells;
+  log(0) will be missing and those CZ-years are dropped by reghdfe.
+====================================================================*/
+
+{
+local shock shock_emp_w_pop_03_08
+global disease "cvd nutri infec neoplasm mental digest peri homicide others"
+set showomitted off
+
+foreach dis in $disease {
+
+	quietly reghdfe laamr_`dis' c.`shock'##ib2006.year [pw=pop06], a(year cz) vce(cluster cz)
+
+	tempfile es_`dis'
+	postfile es_h year beta lb ub using `es_`dis'', replace
+	foreach yr of numlist 1998/2015 {
+		if `yr' == 2006 {
+			post es_h (2006) (0) (0) (0)
+		}
+		else {
+			post es_h (`yr') ///
+				(_b[c.`shock'#`yr'.year]) ///
+				(_b[c.`shock'#`yr'.year] - 1.96*_se[c.`shock'#`yr'.year]) ///
+				(_b[c.`shock'#`yr'.year] + 1.96*_se[c.`shock'#`yr'.year])
+		}
+	}
+	postclose es_h
+
+	preserve
+	use `es_`dis'', clear
+	twoway (rarea lb ub year, color(navy%20) lcolor(%0)) ///
+		   (connected beta year, mc(navy) lc(navy) ms(O) msize(small)), ///
+		yline(0, lcolor(black) lpattern(dash)) ///
+		xline(2006, lcolor("253 181 21")) ///
+		xline(2008, lpattern(dash) lcolor(maroon)) ///
+		xlabel(1998(2)2015, angle(45) labsize(small)) ///
+		xtitle("Year") ytitle("Effect on log(AAMR) — `dis'" "(95% CI)", size(small)) ///
+		graphregion(color(white)) legend(off)
+	graph export "$output/figures/es_laamr_`dis'.pdf", replace
+	restore
+}
+}
+
+
+/*====================================================================
+  TABLE 2: Cause-Specific AAMR
+  Preferred spec: shock_emp_w_pop_03_08 × Post 2009, CZ+Year FE,
+  weighted by 2006 CZ population, clustered SE at CZ level.
+  Coefficients scaled ×100 to read as % change per 1pp shock.
+  Note: log(0) cells dropped; check N across columns for balance.
+====================================================================*/
+
+{
+local shock post_s_emp_w_pop_3_8_09
+global disease "cvd nutri infec neoplasm mental digest peri homicide others"
+
+local i = 1
+foreach dis in $disease {
+	quietly reghdfe laamr_`dis' `shock' [pw=pop06], a(year cz) vce(cluster cz)
+
+	local b_`i'_aux  : di %8.4f _b[`shock']*100
+	local se_`i'     : di %8.4f _se[`shock']*100
+	local t_`i' = abs(_b[`shock']/_se[`shock'])
+
+	if (`t_`i'' >= 2.576)              local b_`i' = "`b_`i'_aux'***"
+	else if inrange(`t_`i'', 1.96, 2.575) local b_`i' = "`b_`i'_aux'**"
+	else if inrange(`t_`i'', 1.645, 1.95) local b_`i' = "`b_`i'_aux'*"
+	else                               local b_`i' = "`b_`i'_aux'"
+
+	sum laamr_`dis' if e(sample)
+	local mean_`i' : di %8.4f `r(mean)'
+	local N_`i'    : di %12.0fc `e(N)'
+	distinct cz if e(sample)
+	local ncz_`i'  : di %6.0fc `r(ndistinct)'
+	local ++i
+}
+
+cap file close sm
+file open sm using "$output/tables/T2_cause_specific.tex", write replace
+file write sm "\begin{tabular}{lcccccccccc} \hline \hline" _n
+file write sm "& CVD & Endocrine & Infectious & Neoplasm & Mental & Digestive & Perinatal & Homicide & Other \\" _n
+file write sm "& (1) & (2) & (3) & (4) & (5) & (6) & (7) & (8) & (9) \\ \toprule" _n
+file write sm "\textit{Shock $\times$ Post 2009}"
+forv i = 1/9 {
+	file write sm " & `b_`i''"
+}
+file write sm " \\" _n
+forv i = 1/9 {
+	file write sm " & (`se_`i'')"
+}
+file write sm " \\" _n
+file write sm "Mean log AAMR"
+forv i = 1/9 {
+	file write sm " & `mean_`i''"
+}
+file write sm " \\ \\" _n
+file write sm "Obs"
+forv i = 1/9 {
+	file write sm " & `N_`i''"
+}
+file write sm " \\" _n
+file write sm "No. CZ"
+forv i = 1/9 {
+	file write sm " & `ncz_`i''"
+}
+file write sm " \\ \\" _n
+file write sm "Year FE & Y & Y & Y & Y & Y & Y & Y & Y & Y \\" _n
+file write sm "CZ FE   & Y & Y & Y & Y & Y & Y & Y & Y & Y \\" _n
+file write sm "Weight  & Y & Y & Y & Y & Y & Y & Y & Y & Y \\" _n
+file write sm "Cluster SE: CZ & Y & Y & Y & Y & Y & Y & Y & Y & Y \\" _n
+file write sm "\bottomrule" _n
+file write sm "\end{tabular}"
+file close sm
+}
+
+
+/*====================================================================
+  TABLE 3: By Sex (All-Cause and CVD/Non-CVD)
+====================================================================*/
+
+{
+local shock post_s_emp_w_pop_3_8_09
+local outcomes  "laamr_f laamr_m laamr_cvd_f laamr_cvd_m laamr_non_cvd_f laamr_non_cvd_m"
+local col_heads "Female Male Female Male Female Male"
+
+local i = 1
+foreach out of local outcomes {
+	quietly reghdfe `out' `shock' [pw=pop06], a(year cz) vce(cluster cz)
+
+	local b_`i'_aux : di %8.4f _b[`shock']*100
+	local se_`i'    : di %8.4f _se[`shock']*100
+	local t_`i' = abs(_b[`shock']/_se[`shock'])
+
+	if (`t_`i'' >= 2.576)              local b_`i' = "`b_`i'_aux'***"
+	else if inrange(`t_`i'', 1.96, 2.575) local b_`i' = "`b_`i'_aux'**"
+	else if inrange(`t_`i'', 1.645, 1.95) local b_`i' = "`b_`i'_aux'*"
+	else                               local b_`i' = "`b_`i'_aux'"
+
+	sum `out' if e(sample)
+	local mean_`i' : di %8.4f `r(mean)'
+	local N_`i'    : di %12.0fc `e(N)'
+	distinct cz if e(sample)
+	local ncz_`i'  : di %6.0fc `r(ndistinct)'
+	local ++i
+}
+
+cap file close sm
+file open sm using "$output/tables/T3_by_sex.tex", write replace
+file write sm "\begin{tabular}{lcccccc} \hline \hline" _n
+file write sm "& \multicolumn{2}{c}{All Causes} & \multicolumn{2}{c}{CVD} & \multicolumn{2}{c}{Non-CVD} \\" _n
+file write sm "\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}" _n
+file write sm "& Female & Male & Female & Male & Female & Male \\" _n
+file write sm "& (1) & (2) & (3) & (4) & (5) & (6) \\ \toprule" _n
+file write sm "\textit{Shock $\times$ Post 2009}"
+forv i = 1/6 {
+	file write sm " & `b_`i''"
+}
+file write sm " \\" _n
+forv i = 1/6 {
+	file write sm " & (`se_`i'')"
+}
+file write sm " \\" _n
+file write sm "Mean log AAMR"
+forv i = 1/6 {
+	file write sm " & `mean_`i''"
+}
+file write sm " \\ \\" _n
+file write sm "Obs"
+forv i = 1/6 {
+	file write sm " & `N_`i''"
+}
+file write sm " \\" _n
+file write sm "No. CZ"
+forv i = 1/6 {
+	file write sm " & `ncz_`i''"
+}
+file write sm " \\ \\" _n
+file write sm "Year FE & Y & Y & Y & Y & Y & Y \\" _n
+file write sm "CZ FE   & Y & Y & Y & Y & Y & Y \\" _n
+file write sm "Weight  & Y & Y & Y & Y & Y & Y \\" _n
+file write sm "Cluster SE: CZ & Y & Y & Y & Y & Y & Y \\" _n
+file write sm "\bottomrule" _n
+file write sm "\end{tabular}"
+file close sm
+}
+
+
+/*====================================================================
+  TABLE 4: By Age Group
+  Outcomes: log age-specific death rates (all causes)
+  Note: 15-64 overlaps with 15-49 and 50-69; report all for
+  comparability with Finkelstein et al. (who emphasize working age
+  vs. elderly).
+====================================================================*/
+
+{
+local shock post_s_emp_w_pop_3_8_09
+local outcomes "lasdr_0_14 lasdr_15_49 lasdr_15_64 lasdr_50_69 lasdr_70"
+local labels   "Ages 0--14 Ages 15--49 Ages 15--64 Ages 50--69 Ages 70+"
+
+local i = 1
+foreach out of local outcomes {
+	quietly reghdfe `out' `shock' [pw=pop06], a(year cz) vce(cluster cz)
+
+	local b_`i'_aux : di %8.4f _b[`shock']*100
+	local se_`i'    : di %8.4f _se[`shock']*100
+	local t_`i' = abs(_b[`shock']/_se[`shock'])
+
+	if (`t_`i'' >= 2.576)              local b_`i' = "`b_`i'_aux'***"
+	else if inrange(`t_`i'', 1.96, 2.575) local b_`i' = "`b_`i'_aux'**"
+	else if inrange(`t_`i'', 1.645, 1.95) local b_`i' = "`b_`i'_aux'*"
+	else                               local b_`i' = "`b_`i'_aux'"
+
+	sum `out' if e(sample)
+	local mean_`i' : di %8.4f `r(mean)'
+	local N_`i'    : di %12.0fc `e(N)'
+	distinct cz if e(sample)
+	local ncz_`i'  : di %6.0fc `r(ndistinct)'
+	local ++i
+}
+
+cap file close sm
+file open sm using "$output/tables/T4_by_age.tex", write replace
+file write sm "\begin{tabular}{lccccc} \hline \hline" _n
+file write sm "& Ages 0--14 & Ages 15--49 & Ages 15--64 & Ages 50--69 & Ages 70+ \\" _n
+file write sm "& (1) & (2) & (3) & (4) & (5) \\ \toprule" _n
+file write sm "\textit{Shock $\times$ Post 2009}"
+forv i = 1/5 {
+	file write sm " & `b_`i''"
+}
+file write sm " \\" _n
+forv i = 1/5 {
+	file write sm " & (`se_`i'')"
+}
+file write sm " \\" _n
+file write sm "Mean log ASDR"
+forv i = 1/5 {
+	file write sm " & `mean_`i''"
+}
+file write sm " \\ \\" _n
+file write sm "Obs"
+forv i = 1/5 {
+	file write sm " & `N_`i''"
+}
+file write sm " \\" _n
+file write sm "No. CZ"
+forv i = 1/5 {
+	file write sm " & `ncz_`i''"
+}
+file write sm " \\ \\" _n
+file write sm "Year FE & Y & Y & Y & Y & Y \\" _n
+file write sm "CZ FE   & Y & Y & Y & Y & Y \\" _n
+file write sm "Weight  & Y & Y & Y & Y & Y \\" _n
+file write sm "Cluster SE: CZ & Y & Y & Y & Y & Y \\" _n
+file write sm "\bottomrule" _n
+file write sm "\end{tabular}"
+file close sm
+}
 
