@@ -2,6 +2,8 @@
 
 This project studies the effect of the **Great Recession (2008–2009)** on mortality in Mexico. The empirical strategy exploits cross-sectional variation in employment shocks across Mexican commuting zones (CZ), using economic census data from 2003, 2008, and 2013 to construct employment-to-population ratio shocks, and estimates their effect on age-adjusted mortality rates using two-way fixed effects (TWFE) regression.
 
+The paper replicates the design of **Finkelstein, Notowidigdo, Schilbach & Zhang (QJE 2025)** — which finds that the Great Recession *reduced* US mortality primarily through lower air pollution — and tests whether that result generalises to a developing-country setting where the dominant channel is different: in Mexico, formal job loss implies loss of IMSS social security health coverage, predicting the opposite sign and a different cause-of-death pattern. The paper also extends **Fernández-Guerrico (JHE 2021)**, which studies the China trade shock and mortality in Mexico using a shift-share instrument, by using a broader demand-side shock, commuting-zone geography (vs. municipalities), and an explicit insurance-status decomposition of deaths.
+
 ---
 
 ## Repository Structure
@@ -38,7 +40,7 @@ Constructs the set of municipality-level covariates used in the analysis. Main s
 ### `00_death_data_INEGI.do`
 Processes raw INEGI vital statistics death microdata (1998–2015) and constructs the main mortality dataset at the commuting-zone level. Main steps:
 
-1. **Individual death records** – Iterates over yearly files (`defun98.dta` – `defun15.dta`), standardising variables: age at death, sex, marital status, nationality, ICD-10 cause of death, social security coverage (`derechohab`), and indicators for medical certification, death location, and Seguro Popular enrollment.
+1. **Individual death records** – Iterates over yearly files (`defun98.dta` – `defun15.dta`), standardising variables: age at death, sex, marital status, nationality, ICD-10 cause of death, social security coverage (`derechohab`), and indicators for medical certification and death location.
 2. **ICD-10 cause classification** – Groups deaths into 10 cause categories: infectious diseases (A00–B99), neoplasms (C00–D48), circulatory diseases (I00–I99), mental disorders (F00–F99), endocrine/nutritional/metabolic (E00–E88), digestive diseases (K00–K93), perinatal conditions (P00–P96), homicides (X85–Y09), other external causes (V01–X84, Y10–Y89), and a residual "other" group.
 3. **Heterogeneity indicators** – Generates death counts disaggregated by sex, marital status, insurance status (social security, Seguro Popular, uninsured), and cause × sex interactions.
 4. **Collapse to municipality-age-year** – Collapses individual deaths to municipality × 5-year age group × year cells.
@@ -66,28 +68,39 @@ Processes the Mexican Economic Census (SAIC) to construct municipality-level emp
 ---
 
 ### `1_analysis.do`
-Produces descriptive figures showing mortality trends for the sample. Main steps:
+Currently contains a descriptive raw-data figure from an earlier locality-level specification (ages 60–79, treatment/control by 70 y Más coverage). This file will be updated to produce the main descriptive figures for the Great Recession analysis:
 
-- Loads the individual-level death panel (`deaths_02_15_did_panel.dta`), restricts to ages 60–79, and collapses to age group × locality × year cells.
-- Merges with interpolated population denominators and computes crude and age-standardised mortality rates (AAMR) separately for the 60–69 and 70–79 age groups, by treatment status (covered vs. not covered by 70 y Más).
-- Produces a time-series scatter plot (`death_rates_nc_2007_second_60_79.pdf`) with dual y-axes, vertical lines marking 2006 and 2007, and a legend distinguishing treatment group and age band.
-
-**Output:** Figure saved to `$output/figures/raw_data/`.
+- **Figure 1 (planned):** Time series of AAMR (all-cause, female, male) at the national level, with vertical lines at 2006 and 2008.
+- **Figure 2 (planned):** Cause-specific mortality trends by broad age group.
+- **Figure 3–4 (planned):** Same as Figure 2, separately by sex.
 
 ---
 
 ### `1_models.do`
-Estimates the main regression models and exports LaTeX tables. Main steps:
+Estimates the main regression models and exports LaTeX tables and event-study figures. Main steps:
 
-1. **Variable construction** – Loads `mortality_shock_data.dta` and creates log-mortality outcomes (`laamr`, `laamr_f`, `laamr_m`, cause-specific variants) and log age-specific death rates. Constructs "post-shock" interaction terms for each employment ratio shock × post-period (post 2007, 2008, or 2009).
-2. **TWFE estimation** – Runs `reghdfe` with CZ and year fixed effects, population weights (`pop06`), and CZ-clustered standard errors, for each combination of:
-   - Shock window: 2003–2008 or 2003–2013
-   - Post-period cutoff: 2007, 2008, or 2009
-   - Employment measure: total employment/pop, working-age employment/pop, wage-earning employment/pop, working-age wage-earning employment/pop
-3. **Table export** – Writes regression coefficients, standard errors, mean dependent variable, number of observations, and number of CZs into LaTeX `tabular` environments.
-4. **Event studies** – Runs `reghdfe` with continuous shock × year interactions (relative to a base year) for visual parallel-trends tests.
+1. **Variable construction** – Loads `mortality_shock_data.dta` and creates:
+   - Log all-cause AAMR overall and by sex (`laamr`, `laamr_f`, `laamr_m`).
+   - Log cause-specific AAMR for 9 ICD-10 groups (`laamr_cvd`, `laamr_nutri`, `laamr_infec`, `laamr_neoplasm`, `laamr_mental`, `laamr_digest`, `laamr_peri`, `laamr_homicide`, `laamr_others`).
+   - Log age-specific death rates for five age groups, overall and by sex (`lasdr_0_14`, `lasdr_15_49`, `lasdr_15_64`, `lasdr_50_69`, `lasdr_70`; with `_female`/`_male` variants).
+   - Log CVD and non-CVD AAMR by sex (`laamr_cvd_f`, `laamr_non_cvd_f`, `laamr_cvd_m`, `laamr_non_cvd_m`).
+   - Post-shock interaction terms for each employment ratio × post-period (post 2007, 2008, 2009) across three shock windows (2003–2008, 2003–2013, 2008–2013).
+   - Pre-census-year employment ratio snapshots and their differences (shocks) for 2003, 2008, 2013.
 
-**Output:** LaTeX tables written to `$output/tables/`.
+2. **Table 1 — Main TWFE results** (`T1_03_08_13.tex`): 8-column table with rows for Shock×Post 2007/2008/2009 and columns covering four employment-to-population measures under the 2003–2008 shock (cols 1–4) and the 2003–2013 shock (cols 5–8). Outcome: log all-cause AAMR. Specification: CZ + year FE, `pop06` weights, CZ-clustered SE.
+
+3. **Event studies** – `reghdfe` with continuous `shock × ib2006.year` interactions. Year-by-year betas and 95% CIs are extracted via `postfile` and plotted with `twoway rarea + connected`, exported as PDFs. Three sets of figures:
+   - `es_laamr.pdf` – main all-cause event study (baseline year 2006).
+   - `es_laamr_female.pdf`, `es_laamr_male.pdf` – by sex.
+   - `es_laamr_cvd.pdf`, `es_laamr_homicide.pdf`, etc. – by cause (one PDF per ICD-10 group).
+
+4. **Table 2 — Cause-specific AAMR** (`T2_cause_specific.tex`): 9-column table, one column per cause group. Preferred spec: `shock_emp_w_pop_03_08 × Post 2009`. Tests whether the employment shock shifts cause composition — in particular whether homicide rises (opposite sign from chronic disease causes) and whether the pattern differs from Finkelstein et al.'s broad US reduction.
+
+5. **Table 3 — By sex** (`T3_by_sex.tex`): 6 columns — Female/Male × All-Cause/CVD/Non-CVD. Tests whether the mortality effect is concentrated in men (more exposed to formal-sector employment loss) or shared.
+
+6. **Table 4 — By age group** (`T4_by_age.tex`): 5 columns — ages 0–14, 15–49, 15–64, 50–69, 70+. Directly comparable to Finkelstein et al., who find ~75% of the US effect is concentrated in the elderly via air pollution. A different age profile in Mexico would fingerprint the insurance-loss channel (working age) vs. the pollution channel (all ages, especially elderly).
+
+**Output:** LaTeX tables written to `$output/tables/`; event-study PDFs written to `$output/figures/`.
 
 ---
 
@@ -97,8 +110,11 @@ Contains LaTeX tabular fragments (no `\documentclass` wrapper) ready to be `\inp
 
 | File | Description |
 |------|-------------|
-| `T1_03_08.tex` | 4-column table. Rows: Shock×Post 2007/2008/2009. Columns: four employment-to-population ratio measures using the **2003–2008** shock. Includes year and CZ FE, population weights, CZ-clustered SEs. |
-| `T1_03_08_13.tex` | 8-column table extending `T1_03_08` to also include the **2003–2013** shock (columns 5–8), enabling comparison of short- vs. medium-run employment contractions. |
+| `T1_03_08.tex` | 4-column table. Rows: Shock×Post 2007/2008/2009. Columns: four employment-to-population ratio measures using the **2003–2008** shock. |
+| `T1_03_08_13.tex` | 8-column extension adding the **2003–2013** shock (cols 5–8) for comparison of short- vs. medium-run contractions. |
+| `T2_cause_specific.tex` | 9-column table of cause-specific AAMR effects (CVD, Endocrine, Infectious, Neoplasm, Mental, Digestive, Perinatal, Homicide, Other). |
+| `T3_by_sex.tex` | 6-column table of AAMR effects by sex × cause group (All/CVD/Non-CVD). |
+| `T4_by_age.tex` | 5-column table of age-specific death rate effects (0–14, 15–49, 15–64, 50–69, 70+). |
 
 ---
 
@@ -118,6 +134,48 @@ The analysis draws on the following external datasets (not stored in this reposi
 | Health resources | Secretaría de Salud | 2001–2020 |
 | CZ crosswalk (Faber 2020) | Faber (2020) | Municipal level |
 | CZ crosswalk (Banxico) | Banxico | Municipal level |
+
+---
+
+## Potential Extension: Violence and Homicide Outcomes
+
+The 2008–2013 period in Mexico overlaps almost exactly with the escalation of drug-trafficking violence under the Calderón administration's military strategy against cartels. This creates both a **confounding threat** and a **substantive research opportunity**.
+
+### Why this matters
+
+Homicide deaths (`deaths_homicide`, ICD-10 codes X85–Y09) are already constructed in the main dataset and `laamr_homicide` is estimated in Table 2. The event study for this outcome (`es_laamr_homicide.pdf`) provides a first look at the co-movement between the employment shock and violent deaths. The key question is whether the employment shock and the violence surge are separable — and whether formal job loss *caused* some of the homicide increase through an opportunity-cost channel.
+
+The theoretical mechanism: when formal employment contracts, the opportunity cost of joining criminal organisations falls, raising participation in illicit labour markets (Becker 1968; Lochner 2004). This channel is the reverse of Finkelstein et al.'s air-pollution mechanism and would predict that the recession *raised* mortality from external causes even as it might reduce chronic-disease mortality through income effects.
+
+### Empirical path
+
+**Step 1 — Separate the two shocks.**
+The employment shock and the cartel violence shock are partially collinear in time but have independent cross-CZ variation. CZs differ in pre-existing cartel presence, proximity to trafficking routes, and military deployment intensity. Including CZ × post fixed effects or controlling for a measure of pre-recession cartel exposure (e.g., Dell 2015 trafficking-route indicator) helps isolate the labour-market channel from the security-policy channel.
+
+**Step 2 — Heterogeneity by pre-recession cartel exposure.**
+Interact `shock_emp_w_pop_03_08` with an indicator for high vs. low pre-existing violence (e.g., above-median homicide rate in 2005–2007). If the employment shock raises homicides only in already-violent CZs, this is consistent with the criminal-labour-market channel.
+
+**Step 3 — Mechanism: labour market vs. income.**
+Separate the total employment shock into a formal wage-employment component (`shock_emp_w_pop_03_08`) and an informal/self-employment residual. The opportunity-cost channel predicts that formal job loss drives homicides; pure income effects would predict the same sign from both components.
+
+**Step 4 — Age and sex profile of homicide victims.**
+Homicide deaths are heavily concentrated in young males (ages 15–49). Table 3 (by sex) and Table 4 (by age) already provide this decomposition. A recession effect concentrated in `lasdr_male_15_49` on the homicide outcome would strongly support the criminal-labour-market channel.
+
+### Additional data needed
+
+| Dataset | Source | Purpose |
+|---------|--------|---------|
+| SESNSP homicide counts by municipality-year | Secretaría de Seguridad Pública | Higher-frequency, more disaggregated than INEGI vital stats; includes intentional homicide separately from total external deaths |
+| Dell (2015) drug-trafficking route indicator | Melissa Dell (replication data) | Instrument/control for pre-existing cartel exposure at municipality level |
+| Military operation dates and municipalities | Calderón et al. (2015); SEDENA | Separate the security-policy shock from the economic shock |
+| IMSS registered workers by municipality-year | IMSS Memoria Estadística | Population denominator for insurance-status death rates (see insurance mechanism section) |
+
+### Key references
+
+- Dell, M. (2015). "Trafficking Networks and the Mexican Drug War." *American Economic Review*, 105(6), 1738–1779.
+- Calderón, G., Robles, G., Díaz-Cayeros, A., & Magaloni, B. (2015). "The Beheading of Criminal Organizations and the Dynamics of Violence in Mexico." *Journal of Conflict Resolution*, 59(8), 1455–1485.
+- Lochner, L. (2004). "Education, Work, and Crime: A Human Capital Approach." *International Economic Review*, 45(3), 811–843.
+- Oster, E., & Shermer, B. (2023). "The Economics of Crime." *Handbook of Labor Economics*.
 
 ---
 
